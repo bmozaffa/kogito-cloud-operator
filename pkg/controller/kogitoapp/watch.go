@@ -2,6 +2,7 @@ package kogitoapp
 
 import (
 	"github.com/kiegroup/kogito-cloud-operator/pkg/apis/app/v1alpha1"
+	defs "github.com/kiegroup/kogito-cloud-operator/pkg/controller/kogitoapp/definitions"
 	oappsv1 "github.com/openshift/api/apps/v1"
 	obuildv1 "github.com/openshift/api/build/v1"
 	oimagev1 "github.com/openshift/api/image/v1"
@@ -37,11 +38,12 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 	}
 
 	return &ReconcileKogitoApp{
-		client:      mgr.GetClient(),
-		scheme:      mgr.GetScheme(),
-		cache:       mgr.GetCache(),
-		imageClient: imageClient,
-		buildClient: buildClient,
+		client:           mgr.GetClient(),
+		scheme:           mgr.GetScheme(),
+		cache:            mgr.GetCache(),
+		imageClient:      imageClient,
+		buildClient:      buildClient,
+		resourcesFactory: &defs.ResourcesFactory{},
 	}
 }
 

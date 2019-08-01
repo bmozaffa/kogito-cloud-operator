@@ -11,6 +11,7 @@ import (
 
 	"github.com/kiegroup/kogito-cloud-operator/pkg/apis/app/v1alpha1"
 	"github.com/kiegroup/kogito-cloud-operator/pkg/controller/kogitoapp/constants"
+	defs "github.com/kiegroup/kogito-cloud-operator/pkg/controller/kogitoapp/definitions"
 	"github.com/kiegroup/kogito-cloud-operator/pkg/controller/kogitoapp/logs"
 	"github.com/kiegroup/kogito-cloud-operator/pkg/controller/kogitoapp/shared"
 	"github.com/kiegroup/kogito-cloud-operator/pkg/controller/kogitoapp/status"
@@ -41,11 +42,12 @@ var _ reconcile.Reconciler = &ReconcileKogitoApp{}
 type ReconcileKogitoApp struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
-	client      client.Client
-	scheme      *runtime.Scheme
-	cache       cachev1.Cache
-	imageClient *imagev1.ImageV1Client
-	buildClient *buildv1.BuildV1Client
+	client           client.Client
+	scheme           *runtime.Scheme
+	cache            cachev1.Cache
+	imageClient      *imagev1.ImageV1Client
+	buildClient      *buildv1.BuildV1Client
+	resourcesFactory *defs.ResourcesFactory
 }
 
 // Reconcile reads that state of the cluster for a KogitoApp object and makes changes based on the state read
@@ -84,7 +86,7 @@ func (r *ReconcileKogitoApp) Reconcile(request reconcile.Request) (reconcile.Res
 	// TODO: move object verification to somewhere else
 	// TODO: move the object factory to somewhere else
 	// Check if the SA already exists
-	sa := newSAforCR(instance)
+	sa, err := r.resourcesFactory.ServiceAccount.New(instance)
 	log.Info("Creating the ServiceAccount ", sa.Name, " in namespace ", sa.Namespace)
 	rResult, err := r.createObj(&sa,
 		r.client.Get(context.TODO(), types.NamespacedName{Name: sa.Name, Namespace: sa.Namespace}, &corev1.ServiceAccount{}))
@@ -92,14 +94,12 @@ func (r *ReconcileKogitoApp) Reconcile(request reconcile.Request) (reconcile.Res
 		return rResult, err
 	}
 
-	roleBindingList := newSARoleBinding(instance, sa)
-	for _, rb := range roleBindingList.Items {
-		log.Info("Creating the RoleBinding ", rb.Name, " in namespace ", rb.Namespace)
-		rResult, err := r.createObj(&rb,
-			r.client.Get(context.TODO(), types.NamespacedName{Name: rb.Name, Namespace: rb.Namespace}, &rbacv1.RoleBinding{}))
-		if err != nil {
-			return rResult, err
-		}
+	roleBinding := r.resourcesFactory.RoleBinding.New(instance, &sa)
+	log.Info("Creating the RoleBinding ", roleBinding.Name, " in namespace ", roleBinding.Namespace)
+	rResult, err = r.createObj(&roleBinding,
+		r.client.Get(context.TODO(), types.NamespacedName{Name: roleBinding.Name, Namespace: roleBinding.Namespace}, &rbacv1.RoleBinding{}))
+	if err != nil {
+		return rResult, err
 	}
 
 	// Define new BuildConfig objects
@@ -422,7 +422,7 @@ func (r *ReconcileKogitoApp) newDCForCR(cr *v1alpha1.KogitoApp, serviceBC obuild
 							ImagePullPolicy: corev1.PullAlways,
 						},
 					},
-					ServiceAccountName: constants.ServiceAccountName,
+					ServiceAccountName: defs.ServiceAccountName,
 				},
 			},
 			Triggers: oappsv1.DeploymentTriggerPolicies{
@@ -453,40 +453,6 @@ func (r *ReconcileKogitoApp) newDCForCR(cr *v1alpha1.KogitoApp, serviceBC obuild
 	}
 
 	return depConfig, nil
-}
-
-// newSAforCR returns the ServiceAccount for the Deployment Config containers template
-func newSAforCR(cr *v1alpha1.KogitoApp) (sa corev1.ServiceAccount) {
-	sa = corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      constants.ServiceAccountName,
-			Namespace: cr.Namespace,
-		},
-	}
-	return sa
-}
-
-func newSARoleBinding(cr *v1alpha1.KogitoApp, sa corev1.ServiceAccount) (roles rbacv1.RoleBindingList) {
-	roles = rbacv1.RoleBindingList{}
-	roles.Items = append(roles.Items, rbacv1.RoleBinding{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: sa.Namespace,
-			Name:      fmt.Sprintf("%s-%s", sa.Name, constants.ServiceAccountRole),
-		},
-		RoleRef: rbacv1.RoleRef{
-			Kind: "Role",
-			Name: sa.Name,
-		},
-		Subjects: []rbacv1.Subject{
-			{
-				Kind:      "ServiceAccount",
-				Namespace: sa.Namespace,
-				Name:      sa.Name,
-			},
-		},
-	})
-
-	return roles
 }
 
 // updateBuildConfigs ...
