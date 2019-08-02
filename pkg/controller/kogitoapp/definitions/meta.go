@@ -1,6 +1,7 @@
 package definitions
 
 import (
+	"github.com/kiegroup/kogito-cloud-operator/pkg/apis/app/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -13,7 +14,7 @@ const (
 	labelAppName = "app"
 )
 
-func addDefaultMeta(objectMeta *metav1.ObjectMeta, applicationName string) {
+func addDefaultMeta(objectMeta *metav1.ObjectMeta, kogitoApp *v1alpha1.KogitoApp) {
 	if objectMeta != nil {
 		if objectMeta.Annotations == nil {
 			objectMeta.Annotations = map[string]string{}
@@ -24,6 +25,6 @@ func addDefaultMeta(objectMeta *metav1.ObjectMeta, applicationName string) {
 		for key, value := range commonAnnotations {
 			objectMeta.Annotations[key] = value
 		}
-		objectMeta.Labels[labelAppName] = applicationName
+		objectMeta.Labels[labelAppName] = kogitoApp.Spec.Name
 	}
 }

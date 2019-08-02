@@ -23,6 +23,6 @@ func (*serviceAccountResource) New(kogitoApp *v1alpha1.KogitoApp) (serviceAccoun
 			Namespace: kogitoApp.Namespace,
 		},
 	}
-	addDefaultMeta(&serviceAccount.ObjectMeta, kogitoApp.Name)
+	addDefaultMeta(&serviceAccount.ObjectMeta, kogitoApp)
 	return serviceAccount, nil
 }

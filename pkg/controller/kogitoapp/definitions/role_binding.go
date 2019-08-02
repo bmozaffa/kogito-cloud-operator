@@ -35,6 +35,6 @@ func (*roleBindingResource) New(kogitoApp *v1alpha1.KogitoApp, serviceAccount *c
 			},
 		},
 	}
-	addDefaultMeta(&roleBinding.ObjectMeta, kogitoApp.Name)
+	addDefaultMeta(&roleBinding.ObjectMeta, kogitoApp)
 	return roleBinding
 }
