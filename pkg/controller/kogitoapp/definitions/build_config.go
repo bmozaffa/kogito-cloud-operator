@@ -54,6 +54,7 @@ type BuildType string
 type BuildConfigComposition struct {
 	BuildS2I    buildv1.BuildConfig
 	BuildRunner buildv1.BuildConfig
+	AsMap       map[BuildType]*buildv1.BuildConfig
 }
 
 type buildConfigContext struct {
@@ -63,13 +64,25 @@ type buildConfigContext struct {
 type buildConfigResource struct {
 }
 
+// New creates a new composite build configuration for Kogito App: s2i and runner builds
 func (b *buildConfigResource) New(kogitoApp *v1alpha1.KogitoApp) (buildConfig BuildConfigComposition, err error) {
 	buildConfig = BuildConfigComposition{}
 
 	buildConfigS2I := buildConfigS2IResource{Image: BuildImageStreams[S2IBuildType][kogitoApp.Spec.Runtime]}
 	buildConfigRunner := buildConfigRunnerResource{Image: BuildImageStreams[RunnerBuildType][kogitoApp.Spec.Runtime]}
 
-	buildConfig.BuildS2I = buildConfigS2I.New(kogitoApp)
-	buildConfig.BuildRunner, err = buildConfigRunner.New(kogitoApp, &buildConfig.BuildS2I)
+	if buildConfig.BuildS2I, err = buildConfigS2I.New(kogitoApp); err != nil {
+		return buildConfig, err
+	}
+	if buildConfig.BuildRunner, err = buildConfigRunner.New(kogitoApp, &buildConfig.BuildS2I); err != nil {
+		return buildConfig, err
+	}
+
+	// transform the builds to a map to facilitate the redesign on controller side.
+	// we should remove it after having inventory package to handle the objects
+	buildConfig.AsMap = map[BuildType]*buildv1.BuildConfig{
+		S2IBuildType:    &buildConfig.BuildS2I,
+		RunnerBuildType: &buildConfig.BuildRunner,
+	}
 	return buildConfig, err
 }

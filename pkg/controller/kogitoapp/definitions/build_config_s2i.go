@@ -1,6 +1,7 @@
 package definitions
 
 import (
+	"errors"
 	"fmt"
 
 	v1alpha1 "github.com/kiegroup/kogito-cloud-operator/pkg/apis/app/v1alpha1"
@@ -18,7 +19,10 @@ type buildConfigS2IResource struct {
 	Image v1alpha1.Image
 }
 
-func (b *buildConfigS2IResource) New(kogitoApp *v1alpha1.KogitoApp) (buildConfig buildv1.BuildConfig) {
+func (b *buildConfigS2IResource) New(kogitoApp *v1alpha1.KogitoApp) (buildConfig buildv1.BuildConfig, err error) {
+	if kogitoApp.Spec.Build == nil || kogitoApp.Spec.Build.GitSource == nil {
+		return buildConfig, errors.New("GitSource in the Kogito App Spec is required to create new build configurations")
+	}
 	// headers and base information
 	buildConfig = buildv1.BuildConfig{
 		ObjectMeta: metav1.ObjectMeta{
@@ -31,7 +35,7 @@ func (b *buildConfigS2IResource) New(kogitoApp *v1alpha1.KogitoApp) (buildConfig
 	b.setBuildSource(kogitoApp, &buildConfig)
 	b.setBuildStrategy(kogitoApp, &buildConfig)
 	addDefaultMeta(&buildConfig.ObjectMeta, kogitoApp)
-	return buildConfig
+	return buildConfig, nil
 }
 
 func (b *buildConfigS2IResource) setBuildSource(kogitoApp *v1alpha1.KogitoApp, buildConfig *buildv1.BuildConfig) {

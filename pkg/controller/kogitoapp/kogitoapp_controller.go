@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/kiegroup/kogito-cloud-operator/pkg/apis/app/v1alpha1"
-	"github.com/kiegroup/kogito-cloud-operator/pkg/controller/kogitoapp/constants"
 	defs "github.com/kiegroup/kogito-cloud-operator/pkg/controller/kogitoapp/definitions"
 	"github.com/kiegroup/kogito-cloud-operator/pkg/controller/kogitoapp/logs"
 	"github.com/kiegroup/kogito-cloud-operator/pkg/controller/kogitoapp/shared"
@@ -103,8 +102,12 @@ func (r *ReconcileKogitoApp) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Define new BuildConfig objects
-	buildConfigs := newBCsForCR(instance)
-	for imageType, buildConfig := range buildConfigs {
+	buildConfigs, err := r.resourcesFactory.BuildConfig.New(instance)
+	if err != nil {
+		return rResult, err
+	}
+
+	for buildType, buildConfig := range buildConfigs.AsMap {
 		if _, err := r.ensureImageStream(
 			buildConfig.Name,
 			instance,
@@ -116,13 +119,13 @@ func (r *ReconcileKogitoApp) Reconcile(request reconcile.Request) (reconcile.Res
 		_, err = r.buildClient.BuildConfigs(buildConfig.Namespace).Get(buildConfig.Name, metav1.GetOptions{})
 		if err != nil && errors.IsNotFound(err) {
 			log.Info("Creating a new BuildConfig ", buildConfig.Name, " in namespace ", buildConfig.Namespace)
-			bc, err := r.buildClient.BuildConfigs(buildConfig.Namespace).Create(&buildConfig)
+			bc, err := r.buildClient.BuildConfigs(buildConfig.Namespace).Create(buildConfig)
 			if err != nil {
 				return reconcile.Result{}, err
 			}
 
 			// Trigger first build of new builder BC
-			if imageType == "builder" {
+			if buildType == defs.S2IBuildType {
 				if err = r.triggerBuild(*bc, instance); err != nil {
 					return reconcile.Result{}, err
 				}
@@ -133,7 +136,7 @@ func (r *ReconcileKogitoApp) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Create new DeploymentConfig object
-	depConfig, err := r.newDCForCR(instance, buildConfigs["service"])
+	depConfig, err := r.newDCForCR(instance, buildConfigs.AsMap[defs.RunnerBuildType])
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -256,91 +259,8 @@ func (r *ReconcileKogitoApp) Reconcile(request reconcile.Request) (reconcile.Res
 	return reconcile.Result{}, nil
 }
 
-// newBCForCR returns a BuildConfig with the same name/namespace as the cr
-func newBCsForCR(cr *v1alpha1.KogitoApp) map[string]obuildv1.BuildConfig {
-	buildConfigs := map[string]obuildv1.BuildConfig{}
-	serviceBC := obuildv1.BuildConfig{}
-	images := constants.RuntimeImageDefaults[cr.Spec.Runtime]
-
-	for _, imageDefaults := range images {
-		if imageDefaults.BuilderImage {
-			builderName := strings.Join([]string{cr.Spec.Name, "builder"}, "-")
-			builderBC := obuildv1.BuildConfig{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      builderName,
-					Namespace: cr.Namespace,
-					Labels: map[string]string{
-						"app": cr.Name,
-					},
-				},
-			}
-			builderBC.SetGroupVersionKind(obuildv1.SchemeGroupVersion.WithKind("BuildConfig"))
-			builderBC.Spec.Source.Git = &obuildv1.GitBuildSource{
-				URI: *cr.Spec.Build.GitSource.URI,
-				Ref: cr.Spec.Build.GitSource.Reference,
-			}
-			builderBC.Spec.Source.ContextDir = cr.Spec.Build.GitSource.ContextDir
-			builderBC.Spec.Output.To = &corev1.ObjectReference{Name: strings.Join([]string{builderName, "latest"}, ":"), Kind: "ImageStreamTag"}
-			builderBC.Spec.Strategy.Type = obuildv1.SourceBuildStrategyType
-			builderBC.Spec.Strategy.SourceStrategy = &obuildv1.SourceBuildStrategy{
-				Incremental: &cr.Spec.Build.Incremental,
-				Env:         shared.FromEnvToEnvVar(cr.Spec.Build.Env),
-				From: corev1.ObjectReference{
-					Name:      fmt.Sprintf("%s:%s", imageDefaults.ImageStreamName, imageDefaults.ImageStreamTag),
-					Namespace: imageDefaults.ImageStreamNamespace,
-					Kind:      "ImageStreamTag",
-				},
-			}
-
-			buildConfigs["builder"] = builderBC
-		} else {
-			serviceBC = obuildv1.BuildConfig{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      cr.Spec.Name,
-					Namespace: cr.Namespace,
-					Labels: map[string]string{
-						"app": cr.Name,
-					},
-				},
-			}
-			serviceBC.SetGroupVersionKind(obuildv1.SchemeGroupVersion.WithKind("BuildConfig"))
-			serviceBC.Spec.Source.Type = obuildv1.BuildSourceImage
-			serviceBC.Spec.Output.To = &corev1.ObjectReference{Name: strings.Join([]string{cr.Spec.Name, "latest"}, ":"), Kind: "ImageStreamTag"}
-			serviceBC.Spec.Strategy.Type = obuildv1.SourceBuildStrategyType
-			serviceBC.Spec.Strategy.SourceStrategy = &obuildv1.SourceBuildStrategy{
-				From: corev1.ObjectReference{
-					Name:      fmt.Sprintf("%s:%s", imageDefaults.ImageStreamName, imageDefaults.ImageStreamTag),
-					Namespace: imageDefaults.ImageStreamNamespace,
-					Kind:      "ImageStreamTag",
-				},
-			}
-		}
-	}
-
-	serviceBC.Spec.Source.Images = []obuildv1.ImageSource{
-		{
-			From: *buildConfigs["builder"].Spec.Output.To,
-			Paths: []obuildv1.ImageSourcePath{
-				{
-					DestinationDir: ".",
-					SourcePath:     "/home/kogito/bin",
-				},
-			},
-		},
-	}
-	serviceBC.Spec.Triggers = []obuildv1.BuildTriggerPolicy{
-		{
-			Type:        obuildv1.ImageChangeBuildTriggerType,
-			ImageChange: &obuildv1.ImageChangeTrigger{From: buildConfigs["builder"].Spec.Output.To},
-		},
-	}
-	buildConfigs["service"] = serviceBC
-
-	return buildConfigs
-}
-
 // newDCForCR returns a DeploymentConfig with the same name/namespace as the cr
-func (r *ReconcileKogitoApp) newDCForCR(cr *v1alpha1.KogitoApp, serviceBC obuildv1.BuildConfig) (oappsv1.DeploymentConfig, error) {
+func (r *ReconcileKogitoApp) newDCForCR(cr *v1alpha1.KogitoApp, serviceBC *obuildv1.BuildConfig) (oappsv1.DeploymentConfig, error) {
 	var probe *corev1.Probe
 	replicas := int32(1)
 	if cr.Spec.Replicas != nil {
