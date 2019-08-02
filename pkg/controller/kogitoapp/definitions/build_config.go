@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	kind               = "BuildConfig"
+	buildConfigKind    = "BuildConfig"
 	kindImageStreamTag = "ImageStreamTag"
 	tagLatest          = "latest"
 	// ImageStreamTag default tag name for the ImageStreams
@@ -64,7 +64,6 @@ type buildConfigContext struct {
 type buildConfigResource struct {
 }
 
-// New creates a new composite build configuration for Kogito App: s2i and runner builds
 func (b *buildConfigResource) New(kogitoApp *v1alpha1.KogitoApp) (buildConfig BuildConfigComposition, err error) {
 	buildConfig = BuildConfigComposition{}
 

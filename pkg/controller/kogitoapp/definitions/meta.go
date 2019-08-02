@@ -14,6 +14,7 @@ const (
 	labelAppName = "app"
 )
 
+// addDefaultMeta adds the default annotations and labels
 func addDefaultMeta(objectMeta *metav1.ObjectMeta, kogitoApp *v1alpha1.KogitoApp) {
 	if objectMeta != nil {
 		if objectMeta.Annotations == nil {
@@ -25,6 +26,12 @@ func addDefaultMeta(objectMeta *metav1.ObjectMeta, kogitoApp *v1alpha1.KogitoApp
 		for key, value := range commonAnnotations {
 			objectMeta.Annotations[key] = value
 		}
-		objectMeta.Labels[labelAppName] = kogitoApp.Spec.Name
+		//objectMeta.Labels[labelAppName] = kogitoApp.Spec.Name
+		addDefaultLabels(objectMeta.Labels, kogitoApp)
 	}
+}
+
+// addDefaultLabels adds the default labels
+func addDefaultLabels(m map[string]string, kogitoApp *v1alpha1.KogitoApp) {
+	m[labelAppName] = kogitoApp.Spec.Name
 }

@@ -21,6 +21,18 @@ func Test_addDefaultMeta_whenLabelsAreNotDefined(t *testing.T) {
 	assert.True(t, objectMeta.Labels[labelAppName] == "test")
 }
 
+func Test_addDefaultMeta_whenAlreadyHasLabels(t *testing.T) {
+	objectMeta := &metav1.ObjectMeta{
+		Labels: map[string]string{
+			"app":      "test123",
+			"operator": "kogito",
+		},
+	}
+	addDefaultMeta(objectMeta, kogitoApp)
+	assert.True(t, objectMeta.Labels[labelAppName] == "test")
+	assert.True(t, objectMeta.Labels["operator"] == "kogito")
+}
+
 func Test_addDefaultMeta_whenAlreadyHasAnnotation(t *testing.T) {
 	objectMeta := &metav1.ObjectMeta{
 		Annotations: map[string]string{

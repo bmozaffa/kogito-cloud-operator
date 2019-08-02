@@ -32,7 +32,7 @@ func (b *buildConfigRunnerResource) New(kogitoApp *v1alpha1.KogitoApp, fromBuild
 		},
 	}
 	buildConfig.Spec.Output.To = &corev1.ObjectReference{Kind: kindImageStreamTag, Name: fmt.Sprintf("%s:%s", kogitoApp.Spec.Name, tagLatest)}
-	buildConfig.SetGroupVersionKind(buildv1.SchemeGroupVersion.WithKind(kind))
+	buildConfig.SetGroupVersionKind(buildv1.SchemeGroupVersion.WithKind(buildConfigKind))
 	b.setBuildSource(kogitoApp, &buildConfig, fromBuild)
 	b.setBuildStrategy(kogitoApp, &buildConfig)
 	b.seTriggers(&buildConfig, fromBuild)
