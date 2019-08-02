@@ -31,7 +31,7 @@ func (b *buildConfigRunnerResource) New(kogitoApp *v1alpha1.KogitoApp, fromBuild
 			Namespace: kogitoApp.Namespace,
 		},
 	}
-	buildConfig.Spec.Output.To = &corev1.ObjectReference{Kind: kindImageStreamTag, Name: fmt.Sprintf("%s:%s", buildConfig.Name, tagLatest)}
+	buildConfig.Spec.Output.To = &corev1.ObjectReference{Kind: kindImageStreamTag, Name: fmt.Sprintf("%s:%s", kogitoApp.Spec.Name, tagLatest)}
 	buildConfig.SetGroupVersionKind(buildv1.SchemeGroupVersion.WithKind(kind))
 	b.setBuildSource(kogitoApp, &buildConfig, fromBuild)
 	b.setBuildStrategy(kogitoApp, &buildConfig)
@@ -53,8 +53,6 @@ func (b *buildConfigRunnerResource) setBuildSource(kogitoApp *v1alpha1.KogitoApp
 			},
 		},
 	}
-
-	buildConfig.Spec.Output.To = &corev1.ObjectReference{Name: fmt.Sprintf("%s:%s", kogitoApp.Spec.Name, tagLatest), Kind: kindImageStreamTag}
 }
 
 func (b *buildConfigRunnerResource) setBuildStrategy(kogitoApp *v1alpha1.KogitoApp, buildConfig *buildv1.BuildConfig) {

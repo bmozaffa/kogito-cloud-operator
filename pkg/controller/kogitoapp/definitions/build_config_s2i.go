@@ -40,7 +40,6 @@ func (b *buildConfigS2IResource) setBuildSource(kogitoApp *v1alpha1.KogitoApp, b
 		URI: *kogitoApp.Spec.Build.GitSource.URI,
 		Ref: kogitoApp.Spec.Build.GitSource.Reference,
 	}
-	buildConfig.Spec.Output.To = &corev1.ObjectReference{Name: fmt.Sprintf("%s:%s", buildConfig.Name, tagLatest), Kind: kindImageStreamTag}
 }
 
 func (b *buildConfigS2IResource) setBuildStrategy(kogitoApp *v1alpha1.KogitoApp, buildConfig *buildv1.BuildConfig) {
