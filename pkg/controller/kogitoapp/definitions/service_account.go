@@ -15,7 +15,7 @@ const (
 type serviceAccountResource struct {
 }
 
-func (*serviceAccountResource) New(kogitoApp *v1alpha1.KogitoApp) (serviceAccount corev1.ServiceAccount, err error) {
+func (*serviceAccountResource) New(kogitoApp *v1alpha1.KogitoApp) (serviceAccount corev1.ServiceAccount) {
 	serviceAccount = corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ServiceAccountName,
@@ -23,5 +23,5 @@ func (*serviceAccountResource) New(kogitoApp *v1alpha1.KogitoApp) (serviceAccoun
 		},
 	}
 	addDefaultMeta(&serviceAccount.ObjectMeta, kogitoApp)
-	return serviceAccount, nil
+	return serviceAccount
 }

@@ -2,6 +2,10 @@ package definitions
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+
+	"k8s.io/apimachinery/pkg/util/intstr"
 
 	corev1 "k8s.io/api/core/v1"
 
@@ -14,19 +18,28 @@ import (
 )
 
 const (
-	defaultReplicas      = int32(1)
-	deploymentConfigKind = "DeploymentConfig"
+	defaultReplicas         = int32(1)
+	deploymentConfigKind    = "DeploymentConfig"
+	labelNamespaceSep       = "/"
+	orgKieNamespaceLabelKey = "org.kie" + labelNamespaceSep
+	labelExposeServices     = "io.openshift.expose-services"
+	dockerLabelServicesSep  = ","
+	portSep                 = ":"
+	portFormatWrongMessage  = "Service %s on " + labelExposeServices + " label in wrong format. Won't be possible to expose Services for this application. Should be PORT_NUMBER:PROTOCOL. e.g. 8080:http"
+	nonSecureHTTPProtocol   = "http"
 )
+
+var defaultProbe = &corev1.Probe{
+	TimeoutSeconds:   int32(1),
+	PeriodSeconds:    int32(10),
+	SuccessThreshold: int32(1),
+	FailureThreshold: int32(3),
+}
 
 type deploymentConfigResource struct{}
 
 func (d *deploymentConfigResource) New(kogitoApp *v1alpha1.KogitoApp, runnerBC *buildv1.BuildConfig, sa *corev1.ServiceAccount, dockerImage *dockerv10.DockerImage) (dc *appsv1.DeploymentConfig, err error) {
-	// should be a struct of dependencies that have constant names
-	if err = d.checkDeploymentDependencies(map[string]interface{}{
-		"BuildConfig":    runnerBC,
-		"ServiceAccount": sa,
-		"Image":          dockerImage,
-	}); err != nil {
+	if err = d.checkDeploymentDependencies(runnerBC, sa); err != nil {
 		return dc, err
 	}
 
@@ -73,22 +86,23 @@ func (d *deploymentConfigResource) New(kogitoApp *v1alpha1.KogitoApp, runnerBC *
 
 	addDefaultMeta(&dc.ObjectMeta, kogitoApp)
 	addDefaultMeta(&dc.Spec.Template.ObjectMeta, kogitoApp)
-	addDefaultLabels(dc.Spec.Selector, kogitoApp)
+	addDefaultLabels(&dc.Spec.Selector, kogitoApp)
+	d.addLabelsFromDockerImage(dc, dockerImage)
+	d.discoverPortsAndProbesFromImage(dc, dockerImage)
 	d.setReplicas(kogitoApp, dc)
 
 	return dc, nil
 }
 
 // checkDeploymentDependencies sanity check to create the DeploymentConfig properly
-func (d *deploymentConfigResource) checkDeploymentDependencies(deps map[string]interface{}) (err error) {
-	for dep, obj := range deps {
-		if obj == nil {
-			err = fmt.Errorf("Impossible to create the DeploymentConfig without a reference to %s", dep)
-			break
-		}
+func (d *deploymentConfigResource) checkDeploymentDependencies(bc *buildv1.BuildConfig, sa *corev1.ServiceAccount) (err error) {
+	if bc == nil {
+		return fmt.Errorf("Impossible to create the DeploymentConfig without a reference to a the service BuildConfig")
+	} else if sa == nil {
+		return fmt.Errorf("Impossible to create the DeploymentConfig without a reference to a the Kogito ServiceAccount")
 	}
 
-	return err
+	return nil
 }
 
 // setReplicas defines the number of container replicas that this DeploymentConfig will have
@@ -100,7 +114,68 @@ func (d *deploymentConfigResource) setReplicas(kogitoApp *v1alpha1.KogitoApp, dc
 	dc.Spec.Replicas = replicas
 }
 
-// setPortsAndProbes defines the ports and probes based on the docker image for this DeploymentConfig
-func (d *deploymentConfigResource) setPortsAndProbes(dc *appsv1.DeploymentConfig, dockerImage *dockerv10.DockerImage) {
+// addLabelsFromDockerImage retrieves org.kie labels from DockerImage and adds them to the DeploymentConfig
+func (d *deploymentConfigResource) addLabelsFromDockerImage(dc *appsv1.DeploymentConfig, dockerImage *dockerv10.DockerImage) {
+	if !d.dockerImageHasLabels(dockerImage) {
+		return
+	}
+	for key, value := range dockerImage.Config.Labels {
+		if strings.Contains(key, orgKieNamespaceLabelKey) {
+			splitedKey := strings.Split(key, labelNamespaceSep)
+			importedKey := splitedKey[len(splitedKey)-1]
+			dc.Labels[importedKey] = value
+			dc.Spec.Selector[importedKey] = value
+			dc.Spec.Template.Labels[importedKey] = value
+		}
+	}
+}
 
+// discoverPortsAndProbesFromImage set Ports and Probes based on labels set on the DockerImage of this DeploymentConfig
+func (d *deploymentConfigResource) discoverPortsAndProbesFromImage(dc *appsv1.DeploymentConfig, dockerImage *dockerv10.DockerImage) {
+	if !d.dockerImageHasLabels(dockerImage) {
+		return
+	}
+	containerPorts := []corev1.ContainerPort{}
+	var nonSecureProbe *corev1.Probe
+	for key, value := range dockerImage.Config.Labels {
+		if key == labelExposeServices {
+			services := strings.Split(value, dockerLabelServicesSep)
+			for _, service := range services {
+				ports := strings.Split(service, portSep)
+				if len(ports) == 0 {
+					log.Warnf(portFormatWrongMessage, service)
+					continue
+				}
+				portNumber, err := strconv.Atoi(strings.Split(service, portSep)[0])
+				if err != nil {
+					log.Warnf(portFormatWrongMessage, service)
+					continue
+				}
+				portName := ports[1]
+				containerPorts = append(containerPorts, corev1.ContainerPort{Name: portName, ContainerPort: int32(portNumber), Protocol: corev1.ProtocolTCP})
+				// we have at least one service exported using default HTTP protocols, let's used as a probe!
+				if portName == nonSecureHTTPProtocol {
+					nonSecureProbe = defaultProbe
+					nonSecureProbe.Handler.TCPSocket = &corev1.TCPSocketAction{Port: intstr.FromInt(portNumber)}
+				}
+			}
+			break
+		}
+	}
+	// set the ports we've found
+	if len(containerPorts) != 0 {
+		dc.Spec.Template.Spec.Containers[0].Ports = containerPorts
+		if nonSecureProbe != nil {
+			dc.Spec.Template.Spec.Containers[0].LivenessProbe = nonSecureProbe
+			dc.Spec.Template.Spec.Containers[0].ReadinessProbe = nonSecureProbe
+		}
+	}
+}
+
+func (d *deploymentConfigResource) dockerImageHasLabels(dockerImage *dockerv10.DockerImage) bool {
+	if dockerImage == nil || dockerImage.Config == nil || dockerImage.Config.Labels == nil {
+		log.Warn("Not found any labels on DockerImage")
+		return false
+	}
+	return true
 }

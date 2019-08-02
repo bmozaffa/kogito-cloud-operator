@@ -5,7 +5,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var commonAnnotations = map[string]string{
+var defaultAnnotations = map[string]string{
 	"org.kie.kogito/managed-by":   "Kogito Operator",
 	"org.kie.kogito/operator-crd": "KogitoApp",
 }
@@ -23,15 +23,18 @@ func addDefaultMeta(objectMeta *metav1.ObjectMeta, kogitoApp *v1alpha1.KogitoApp
 		if objectMeta.Labels == nil {
 			objectMeta.Labels = map[string]string{}
 		}
-		for key, value := range commonAnnotations {
+		for key, value := range defaultAnnotations {
 			objectMeta.Annotations[key] = value
 		}
 		//objectMeta.Labels[labelAppName] = kogitoApp.Spec.Name
-		addDefaultLabels(objectMeta.Labels, kogitoApp)
+		addDefaultLabels(&objectMeta.Labels, kogitoApp)
 	}
 }
 
 // addDefaultLabels adds the default labels
-func addDefaultLabels(m map[string]string, kogitoApp *v1alpha1.KogitoApp) {
-	m[labelAppName] = kogitoApp.Spec.Name
+func addDefaultLabels(m *map[string]string, kogitoApp *v1alpha1.KogitoApp) {
+	if *m == nil {
+		(*m) = map[string]string{}
+	}
+	(*m)[labelAppName] = kogitoApp.Spec.Name
 }

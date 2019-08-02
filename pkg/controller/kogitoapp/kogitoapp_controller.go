@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 	"time"
 
@@ -83,9 +82,8 @@ func (r *ReconcileKogitoApp) Reconcile(request reconcile.Request) (reconcile.Res
 
 	// TODO: move fetch objects to somewhere else
 	// TODO: move object verification to somewhere else
-	// TODO: move the object factory to somewhere else
 	// Check if the SA already exists
-	sa, err := r.resourcesFactory.ServiceAccount.New(instance)
+	sa := r.resourcesFactory.ServiceAccount.New(instance)
 	log.Info("Creating the ServiceAccount ", sa.Name, " in namespace ", sa.Namespace)
 	rResult, err := r.createObj(&sa,
 		r.client.Get(context.TODO(), types.NamespacedName{Name: sa.Name, Namespace: sa.Namespace}, &corev1.ServiceAccount{}))
@@ -136,7 +134,7 @@ func (r *ReconcileKogitoApp) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Create new DeploymentConfig object
-	depConfig, err := r.newDCForCR(instance, buildConfigs.AsMap[defs.RunnerBuildType])
+	depConfig, err := r.newDCForCR(instance, buildConfigs.AsMap[defs.RunnerBuildType], &sa)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -260,16 +258,8 @@ func (r *ReconcileKogitoApp) Reconcile(request reconcile.Request) (reconcile.Res
 }
 
 // newDCForCR returns a DeploymentConfig with the same name/namespace as the cr
-func (r *ReconcileKogitoApp) newDCForCR(cr *v1alpha1.KogitoApp, serviceBC *obuildv1.BuildConfig) (oappsv1.DeploymentConfig, error) {
-	var probe *corev1.Probe
-	replicas := int32(1)
-	if cr.Spec.Replicas != nil {
-		replicas = *cr.Spec.Replicas
-	}
-	labels := map[string]string{
-		"app": cr.Name,
-	}
-	ports := []corev1.ContainerPort{}
+func (r *ReconcileKogitoApp) newDCForCR(cr *v1alpha1.KogitoApp, serviceBC *obuildv1.BuildConfig, sa *corev1.ServiceAccount) (oappsv1.DeploymentConfig, error) {
+	dockerImage := &dockerv10.DockerImage{}
 	bcNamespace := cr.Namespace
 	if serviceBC.Spec.Output.To.Namespace != "" {
 		bcNamespace = serviceBC.Spec.Output.To.Namespace
@@ -280,99 +270,20 @@ func (r *ReconcileKogitoApp) newDCForCR(cr *v1alpha1.KogitoApp, serviceBC *obuil
 		log.Warn(cr.Spec.Name, " DeploymentConfig will start when ImageStream build completes.")
 	}
 	if len(isTag.Image.DockerImageMetadata.Raw) != 0 {
-		obj := &dockerv10.DockerImage{}
-		err = json.Unmarshal(isTag.Image.DockerImageMetadata.Raw, obj)
+		err = json.Unmarshal(isTag.Image.DockerImageMetadata.Raw, dockerImage)
 		if err != nil {
 			log.Error(err)
 		}
-		for i, value := range obj.Config.Labels {
-			if strings.Contains(i, "org.kie/") {
-				result := strings.Split(i, "/")
-				labels[result[len(result)-1]] = value
-			}
-			if i == "io.openshift.expose-services" {
-				results := strings.Split(value, ",")
-				for _, item := range results {
-					portResults := strings.Split(item, ":")
-					port, err := strconv.Atoi(portResults[0])
-					if err != nil {
-						log.Error(err)
-					}
-					portName := portResults[1]
-					ports = append(ports, corev1.ContainerPort{Name: portName, ContainerPort: int32(port), Protocol: corev1.ProtocolTCP})
-					if portName == "http" {
-						probe = &corev1.Probe{
-							TimeoutSeconds:   int32(1),
-							PeriodSeconds:    int32(10),
-							SuccessThreshold: int32(1),
-							FailureThreshold: int32(3),
-						}
-						probe.Handler.TCPSocket = &corev1.TCPSocketAction{
-							Port: intstr.FromInt(port),
-						}
-					}
-				}
-			}
-		}
 	}
 
-	depConfig := oappsv1.DeploymentConfig{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      cr.Spec.Name,
-			Namespace: cr.Namespace,
-			Labels:    labels,
-		},
-		Spec: oappsv1.DeploymentConfigSpec{
-			Replicas: replicas,
-			Selector: labels,
-			Strategy: oappsv1.DeploymentStrategy{
-				Type: oappsv1.DeploymentStrategyTypeRolling,
-			},
-			Template: &corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: labels,
-				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:            cr.Spec.Name,
-							Env:             shared.FromEnvToEnvVar(cr.Spec.Env),
-							Resources:       *shared.FromResourcesToResourcesRequirements(cr.Spec.Resources),
-							Image:           serviceBC.Spec.Output.To.Name,
-							ImagePullPolicy: corev1.PullAlways,
-						},
-					},
-					ServiceAccountName: defs.ServiceAccountName,
-				},
-			},
-			Triggers: oappsv1.DeploymentTriggerPolicies{
-				{Type: oappsv1.DeploymentTriggerOnConfigChange},
-				{
-					Type: oappsv1.DeploymentTriggerOnImageChange,
-					ImageChangeParams: &oappsv1.DeploymentTriggerImageChangeParams{
-						Automatic:      true,
-						ContainerNames: []string{cr.Spec.Name},
-						From:           *serviceBC.Spec.Output.To,
-					},
-				},
-			},
-		},
-	}
-	if len(ports) != 0 {
-		depConfig.Spec.Template.Spec.Containers[0].Ports = ports
-		if probe != nil {
-			depConfig.Spec.Template.Spec.Containers[0].LivenessProbe = probe
-			depConfig.Spec.Template.Spec.Containers[0].ReadinessProbe = probe
-		}
-	}
-	depConfig.SetGroupVersionKind(oappsv1.SchemeGroupVersion.WithKind("DeploymentConfig"))
-	err = controllerutil.SetControllerReference(cr, &depConfig, r.scheme)
+	depConfig, err := r.resourcesFactory.DeploymentConfig.New(cr, serviceBC, sa, dockerImage)
+	err = controllerutil.SetControllerReference(cr, depConfig, r.scheme)
 	if err != nil {
 		log.Error(err)
 		return oappsv1.DeploymentConfig{}, err
 	}
 
-	return depConfig, nil
+	return *depConfig, nil
 }
 
 // updateBuildConfigs ...
