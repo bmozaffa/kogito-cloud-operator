@@ -6,4 +6,6 @@ type ResourcesFactory struct {
 	RoleBinding      *roleBindingResource
 	BuildConfig      *buildConfigResource
 	DeploymentConfig *deploymentConfigResource
+	Service          *serviceResource
+	Route            *routeResource
 }

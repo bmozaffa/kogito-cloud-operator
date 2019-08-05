@@ -31,9 +31,9 @@ func (b *buildConfigS2IResource) New(kogitoApp *v1alpha1.KogitoApp) (buildConfig
 		},
 	}
 	buildConfig.Spec.Output.To = &corev1.ObjectReference{Kind: kindImageStreamTag, Name: fmt.Sprintf("%s:%s", buildConfig.Name, tagLatest)}
-	buildConfig.SetGroupVersionKind(buildv1.SchemeGroupVersion.WithKind(buildConfigKind))
 	b.setBuildSource(kogitoApp, &buildConfig)
 	b.setBuildStrategy(kogitoApp, &buildConfig)
+	setGroupVersionKind(&buildConfig.TypeMeta, BuildConfigKind)
 	addDefaultMeta(&buildConfig.ObjectMeta, kogitoApp)
 	return buildConfig, nil
 }

@@ -22,6 +22,7 @@ func (*serviceAccountResource) New(kogitoApp *v1alpha1.KogitoApp) (serviceAccoun
 			Namespace: kogitoApp.Namespace,
 		},
 	}
+	setGroupVersionKind(&serviceAccount.TypeMeta, ServiceAccountKind)
 	addDefaultMeta(&serviceAccount.ObjectMeta, kogitoApp)
 	return serviceAccount
 }

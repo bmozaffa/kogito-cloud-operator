@@ -30,7 +30,7 @@ func Test_deploymentConfigResource_NewWithValidDocker(t *testing.T) {
 	dockerImage := &dockerv10.DockerImage{
 		Config: &dockerv10.DockerConfig{
 			Labels: map[string]string{
-				// note the semicolon
+				// notice the semicolon
 				labelExposeServices:                  "8080:http,8181;https",
 				orgKieNamespaceLabelKey + "operator": "kogito",
 			},

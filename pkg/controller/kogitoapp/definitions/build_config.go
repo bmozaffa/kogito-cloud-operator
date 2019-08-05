@@ -6,7 +6,6 @@ import (
 )
 
 const (
-	buildConfigKind    = "BuildConfig"
 	kindImageStreamTag = "ImageStreamTag"
 	tagLatest          = "latest"
 	// ImageStreamTag default tag name for the ImageStreams

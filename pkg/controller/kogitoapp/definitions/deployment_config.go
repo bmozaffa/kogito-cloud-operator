@@ -19,14 +19,13 @@ import (
 
 const (
 	defaultReplicas         = int32(1)
-	deploymentConfigKind    = "DeploymentConfig"
 	labelNamespaceSep       = "/"
 	orgKieNamespaceLabelKey = "org.kie" + labelNamespaceSep
 	labelExposeServices     = "io.openshift.expose-services"
 	dockerLabelServicesSep  = ","
 	portSep                 = ":"
 	portFormatWrongMessage  = "Service %s on " + labelExposeServices + " label in wrong format. Won't be possible to expose Services for this application. Should be PORT_NUMBER:PROTOCOL. e.g. 8080:http"
-	nonSecureHTTPProtocol   = "http"
+	defaultExportedProtocol = "http"
 )
 
 var defaultProbe = &corev1.Probe{
@@ -82,8 +81,7 @@ func (d *deploymentConfigResource) New(kogitoApp *v1alpha1.KogitoApp, runnerBC *
 		},
 	}
 
-	dc.SetGroupVersionKind(appsv1.SchemeGroupVersion.WithKind(deploymentConfigKind))
-
+	setGroupVersionKind(&dc.TypeMeta, DeploymentConfigKind)
 	addDefaultMeta(&dc.ObjectMeta, kogitoApp)
 	addDefaultMeta(&dc.Spec.Template.ObjectMeta, kogitoApp)
 	addDefaultLabels(&dc.Spec.Selector, kogitoApp)
@@ -154,7 +152,7 @@ func (d *deploymentConfigResource) discoverPortsAndProbesFromImage(dc *appsv1.De
 				portName := ports[1]
 				containerPorts = append(containerPorts, corev1.ContainerPort{Name: portName, ContainerPort: int32(portNumber), Protocol: corev1.ProtocolTCP})
 				// we have at least one service exported using default HTTP protocols, let's used as a probe!
-				if portName == nonSecureHTTPProtocol {
+				if portName == defaultExportedProtocol {
 					nonSecureProbe = defaultProbe
 					nonSecureProbe.Handler.TCPSocket = &corev1.TCPSocketAction{Port: intstr.FromInt(portNumber)}
 				}

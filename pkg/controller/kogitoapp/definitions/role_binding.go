@@ -12,7 +12,6 @@ import (
 const (
 	defaultRoleName = "view"
 	defaultRoleType = "Role"
-	subjectKind     = "ServiceAccount"
 )
 
 type roleBindingResource struct{}
@@ -29,7 +28,7 @@ func (*roleBindingResource) New(kogitoApp *v1alpha1.KogitoApp, serviceAccount *c
 		},
 		Subjects: []rbacv1.Subject{
 			{
-				Kind:      subjectKind,
+				Kind:      string(RoleBindingKind),
 				Namespace: serviceAccount.Namespace,
 				Name:      serviceAccount.Name,
 			},

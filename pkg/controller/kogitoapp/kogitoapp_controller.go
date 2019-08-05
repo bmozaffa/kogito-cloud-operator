@@ -26,7 +26,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	cachev1 "sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -155,59 +154,33 @@ func (r *ReconcileKogitoApp) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Expose DC with service and route
-	serviceRoute := ""
-	if len(depConfig.Spec.Template.Spec.Containers[0].Ports) != 0 {
-		servicePorts := []corev1.ServicePort{}
-		for _, port := range depConfig.Spec.Template.Spec.Containers[0].Ports {
-			servicePorts = append(servicePorts, corev1.ServicePort{
-				Name:       port.Name,
-				Protocol:   port.Protocol,
-				Port:       port.ContainerPort,
-				TargetPort: intstr.FromInt(int(port.ContainerPort)),
-			},
-			)
-		}
-		service := corev1.Service{
-			ObjectMeta: depConfig.ObjectMeta,
-			Spec: corev1.ServiceSpec{
-				Selector: depConfig.Spec.Selector,
-				Type:     corev1.ServiceTypeClusterIP,
-				Ports:    servicePorts,
-			},
-		}
-		service.SetGroupVersionKind(corev1.SchemeGroupVersion.WithKind("Service"))
-		err = controllerutil.SetControllerReference(instance, &service, r.scheme)
-		if err != nil {
-			log.Error(err)
-		}
-
-		service.ResourceVersion = ""
-		rResult, err := r.createObj(
-			&service,
-			r.client.Get(context.TODO(), types.NamespacedName{Name: service.Name, Namespace: service.Namespace}, &corev1.Service{}),
-		)
-		if err != nil {
-			return rResult, err
-		}
-
-		// Create route
-		rt := oroutev1.Route{
-			ObjectMeta: service.ObjectMeta,
-			Spec: oroutev1.RouteSpec{
-				Port: &oroutev1.RoutePort{
-					TargetPort: intstr.FromString("http"),
-				},
-				To: oroutev1.RouteTargetReference{
-					Kind: "Service",
-					Name: service.Name,
-				},
-			},
-		}
-		if serviceRoute = r.GetRouteHost(rt, instance); serviceRoute != "" {
-			instance.Status.Route = fmt.Sprintf("http://%s", serviceRoute)
-		}
+	service, err := r.resourcesFactory.Service.New(instance, &depConfig)
+	if err != nil {
+		return rResult, err
 	}
 
+	err = controllerutil.SetControllerReference(instance, service, r.scheme)
+	if err != nil {
+		log.Error(err)
+	}
+
+	service.ResourceVersion = ""
+	rResult, err = r.createObj(
+		service,
+		r.client.Get(context.TODO(), types.NamespacedName{Name: service.Name, Namespace: service.Namespace}, &corev1.Service{}),
+	)
+	if err != nil {
+		return rResult, err
+	}
+
+	// Create route
+	rt, err := r.resourcesFactory.Route.New(instance, service)
+	if err != nil {
+		return rResult, err
+	}
+	if serviceRoute := r.GetRouteHost(*rt, instance); serviceRoute != "" {
+		instance.Status.Route = fmt.Sprintf("http://%s", serviceRoute)
+	}
 	/*
 
 		bcUpdated, err := r.updateBuildConfigs(instance, buildConfig)
@@ -586,7 +559,6 @@ func getDeploymentsStatuses(dcs []oappsv1.DeploymentConfig, cr *v1alpha1.KogitoA
 
 // GetRouteHost returns the Hostname of the route provided
 func (r *ReconcileKogitoApp) GetRouteHost(route oroutev1.Route, cr *v1alpha1.KogitoApp) string {
-	route.SetGroupVersionKind(oroutev1.SchemeGroupVersion.WithKind("Route"))
 	log := log.With("kind", route.GetObjectKind().GroupVersionKind().Kind, "name", route.Name, "namespace", route.Namespace)
 	err := controllerutil.SetControllerReference(cr, &route, r.scheme)
 	if err != nil {
