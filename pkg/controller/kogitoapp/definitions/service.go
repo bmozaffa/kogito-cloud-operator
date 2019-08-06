@@ -9,10 +9,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-type serviceResource struct{}
-
-func (s *serviceResource) New(kogitoApp *v1alpha1.KogitoApp, deploymentConfig *appsv1.DeploymentConfig) (service *corev1.Service, err error) {
-	ports, err := s.buildServicePorts(deploymentConfig)
+func NewService(kogitoApp *v1alpha1.KogitoApp, deploymentConfig *appsv1.DeploymentConfig) (service *corev1.Service, err error) {
+	ports, err := buildServicePorts(deploymentConfig)
 	if err != nil {
 		return service, err
 	}
@@ -32,7 +30,7 @@ func (s *serviceResource) New(kogitoApp *v1alpha1.KogitoApp, deploymentConfig *a
 	return service, nil
 }
 
-func (s *serviceResource) buildServicePorts(deploymentConfig *appsv1.DeploymentConfig) (ports []corev1.ServicePort, err error) {
+func buildServicePorts(deploymentConfig *appsv1.DeploymentConfig) (ports []corev1.ServicePort, err error) {
 	// for now, we should have at least 1 container defined.
 	if len(deploymentConfig.Spec.Template.Spec.Containers) == 0 ||
 		len(deploymentConfig.Spec.Template.Spec.Containers[0].Ports) == 0 {

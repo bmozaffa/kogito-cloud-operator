@@ -82,7 +82,7 @@ func (r *ReconcileKogitoApp) Reconcile(request reconcile.Request) (reconcile.Res
 	// TODO: move fetch objects to somewhere else
 	// TODO: move object verification to somewhere else
 	// Check if the SA already exists
-	sa := r.resourcesFactory.ServiceAccount.New(instance)
+	sa := defs.NewServiceAccount(instance)
 	log.Info("Creating the ServiceAccount ", sa.Name, " in namespace ", sa.Namespace)
 	rResult, err := r.createObj(&sa,
 		r.client.Get(context.TODO(), types.NamespacedName{Name: sa.Name, Namespace: sa.Namespace}, &corev1.ServiceAccount{}))
@@ -154,7 +154,7 @@ func (r *ReconcileKogitoApp) Reconcile(request reconcile.Request) (reconcile.Res
 	}
 
 	// Expose DC with service and route
-	service, err := r.resourcesFactory.Service.New(instance, &depConfig)
+	service, err := defs.NewService(instance, &depConfig)
 	if err != nil {
 		return rResult, err
 	}

@@ -11,11 +11,7 @@ const (
 	ServiceAccountName = "kogito-service"
 )
 
-// ServiceAccountDefinition is the factory for new Service Resources
-type serviceAccountResource struct {
-}
-
-func (*serviceAccountResource) New(kogitoApp *v1alpha1.KogitoApp) (serviceAccount corev1.ServiceAccount) {
+func NewServiceAccount(kogitoApp *v1alpha1.KogitoApp) (serviceAccount corev1.ServiceAccount) {
 	serviceAccount = corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ServiceAccountName,

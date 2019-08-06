@@ -35,19 +35,17 @@ func Test_serviceResource_NewWithAndWithoutDockerImg(t *testing.T) {
 			},
 		},
 	}
-	svcResource := &serviceResource{}
 	dcResource := &deploymentConfigResource{}
-	saResource := &serviceAccountResource{}
 	bcResource := &buildConfigResource{}
 	bc, _ := bcResource.New(kogitoApp)
-	sa := saResource.New(kogitoApp)
+	sa := NewServiceAccount(kogitoApp)
 	dc, _ := dcResource.New(kogitoApp, &bc.BuildRunner, &sa, nil)
-	svc, err := svcResource.New(kogitoApp, dc)
+	svc, err := NewService(kogitoApp, dc)
 	assert.NotNil(t, err)
 	assert.Nil(t, svc)
 	// try again, now with ports
 	dc, _ = dcResource.New(kogitoApp, &bc.BuildRunner, &sa, dockerImage)
-	svc, err = svcResource.New(kogitoApp, dc)
+	svc, err = NewService(kogitoApp, dc)
 	assert.Nil(t, err)
 	assert.NotNil(t, svc)
 	assert.Len(t, svc.Spec.Ports, 1)
