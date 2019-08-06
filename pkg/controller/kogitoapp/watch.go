@@ -43,7 +43,7 @@ func newReconciler(mgr manager.Manager) reconcile.Reconciler {
 		cache:            mgr.GetCache(),
 		imageClient:      imageClient,
 		buildClient:      buildClient,
-		resourcesFactory: &defs.ResourcesFactory{},
+		resourcesFactory: defs.New(),
 	}
 }
 
